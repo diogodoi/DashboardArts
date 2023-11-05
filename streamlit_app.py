@@ -9,7 +9,6 @@ st.set_page_config(
     page_title="Diogo Godoi - Best Artworks of all times",
     page_icon=":spider_web:",
     layout="wide",
-
     initial_sidebar_state="expanded",
     menu_items={
         'About': "Dashboard desenvolvida para a disciplina de Vizualição de Dados."
@@ -26,7 +25,9 @@ st.markdown('''
             
             ''',
             unsafe_allow_html=True)
-genres = data.genre.explode().unique().tolist()
+genres = ['Select Genre']
+for i in data.genre.explode().unique().tolist():
+    genres.append(i)
 
 
 if 'art_key' not in st.session_state:
@@ -86,16 +87,13 @@ def check_all_arts():
         return True
     return False
 
+
 def find_arts_by_color(color):
-    try:
-        to_rgb = hex_to_rgb(color[1:])
-        list_images_points = data_imagens['central_point'].values
-        closes_index = compare_lists(to_rgb, list_images_points)[:20]
-        st.session_state['paths'] = data_imagens.iloc[closes_index].path.values.tolist(
-        )
-        print(st.session_state['paths'])
-    except:
-        print('erro')
+    to_rgb = hex_to_rgb(color[1:])
+    list_images_points = data_imagens['central_point'].values
+    closes_index = compare_lists(to_rgb, list_images_points)[:20]
+    st.session_state['paths'] = data_imagens.iloc[closes_index].path.values.tolist(
+    )
 
 
 def create_image_full(data):
@@ -131,8 +129,11 @@ def create_art_info(data_imagens, all: bool = False):
         path = [data_imagens['path'].iloc[index]for index in closest]
         st.session_state['paths'] = path
         key = 'top_art_paths'
+        st.subheader("Top 20 images that have the same pallete of colors.")
     else:
         key = 'art_key'
+        st.subheader(
+            f"Top 10 images from {select_genre} that have the same pallete of colors.")
 
     clickable_images(
         paths=st.session_state['paths'],
@@ -147,32 +148,27 @@ with st.sidebar:
     select_genre = st.selectbox(
         "Select genre:", options=genres, on_change=on_genre_change)
     color_selected = st.color_picker(
-        'Select color:', '#000')
+        label='Find one artwork that have this color:', args='#000',)
     color_button = st.button(
         'Find now!', key='color_button', use_container_width=True)
     if color_button:
         find_arts_by_color(color_selected)
-    else:
-        pass
+        st.session_state['top_art_paths'] = -2
 
 
-artistas_genero = data[data['genre'].map(
-    lambda genre: select_genre in genre)]
-names = artistas_genero['name'].to_list()
-imagens = data_imagens[data_imagens['name'].map(
-    lambda name: name in names)]
-points = imagens['Rgb'].explode().to_list()
-rgb_list = find_clusters(points, 12)
-hex_list = to_hex(rgb_list)
-st.session_state['genre_palete'] = hex_list
 st.divider()
-with st.container():
-
-    col1, col2 = st.columns(2)
-    if color_button:
+if ((select_genre == 'Select Genre') and (st.session_state['top_art_paths'] == -1)):
+    st.markdown(
+        f'''
+            <h1 style = "text-align:center;"> Select a genre or pick a color in the sidebar to begin.</h1>
+            ''', unsafe_allow_html=True)
+else:
+    with st.container():
+        col1, col2 = st.columns(2)
+        if color_button:
             st.markdown(f'''
-                        <h1 style="text-align:center>Color select: {color_selected} </h1>
-                        ''', unsafe_allow_html=True)
+                            <h1 style="text-align:center;">The 20 artworks that have the color: <div style="background-color:{color_selected};">{color_selected}</div></h1>
+                            ''', unsafe_allow_html=True)
 
             clickable_images(
                 paths=st.session_state['paths'],
@@ -181,91 +177,100 @@ with st.container():
                 img_style={"margin": "5px", "height": "256px"},
                 key='top_art_paths'
             )
-            color_button = False
-    else:
-        if check_all_arts():
-            with col1:
-                create_image_full(data_imagens)
-            with col2:
-                create_art_info(data_imagens, all=True)
         else:
-            if check_state_arts():
+            if check_all_arts():
                 with col1:
-                    create_image_full(imagens)
+                    create_image_full(data_imagens)
+                with col2:
+                    create_art_info(data_imagens, all=True)
             else:
-                with col1:
-                    source = artistas_genero[['name', 'paintings']]
-                    total_data = source.paintings.sum()
-                    color = [alt.ColorValue(color)
-                             for color in st.session_state['genre_palete']]
-                    hist_data = [{'Red': r, 'Green': g, 'Blue': b}
-                                 for r, g, b in imagens['Rgb'].explode()]
-                    hist_source = pd.DataFrame(hist_data)
-                    if source.name.__len__() > 1:
-                        st.subheader(
-                            f'Most common colors used in: {select_genre}')
-                        create_rainbow(pd.DataFrame(
-                            {'Hex': [st.session_state['genre_palete']]}))
-                    st.subheader(
-                        f'Total works of art produced by {select_genre}')
-                    chart = (
-                        alt.Chart(source, width=560, height=420).mark_arc(innerRadius=140).encode(
-                            theta="paintings",
-
-                            color=alt.Color("name:N", scale=alt.Scale(
-                                range=st.session_state['genre_palete'][:source.__len__()])).legend(None),
-                        )
-                    )
-                    text = (
-                        alt.Chart(pd.DataFrame({'Total_Artworks': [total_data]})).mark_text(size=24, align='center', baseline='middle', color="white").encode(
-                            text='Total_Artworks:Q',
-
-                        )
-                    )
-                    donut_chart = chart+text
-                    st.altair_chart(donut_chart, use_container_width=True)
-                    hist = (
-                        alt.Chart(hist_source).transform_fold(['Red', 'Green', 'Blue'], as_=['var', 'val']).mark_bar(opacity=0.7, binSpacing=0).encode(
-                            alt.X('val:Q', bin=alt.Bin(maxbins=255),
-                                  axis=alt.Axis(title='Tones')),
-                            alt.Y('count()', stack=None),
-                            color=alt.Color('var:N', scale=alt.Scale(
-                                range=['blue', 'green', 'red']), legend=alt.Legend(title='Channels'))
-                        )
-                    )
-                    st.altair_chart(hist, use_container_width=True)
-            with col2:
+                artistas_genero = data[data['genre'].map(
+                    lambda genre: select_genre in genre)]
+                names = artistas_genero['name'].to_list()
+                imagens = data_imagens[data_imagens['name'].map(
+                    lambda name: name in names)]
+                points = imagens['Rgb'].explode().to_list()
+                rgb_list = find_clusters(points, 12)
+                hex_list = to_hex(rgb_list)
+                st.session_state['genre_palete'] = hex_list
                 if check_state_arts():
-                    create_art_info(imagens)
+                    with col1:
+                        create_image_full(imagens)
                 else:
-                    for n, i in enumerate(artistas_genero.sort_values(by='name').iterrows()):
-                        points = imagens[i[1]['name'] ==
-                                         imagens['name']].Rgb.explode().to_list()
-                        rgb_list = find_clusters(points, 12)
-                        hex_list = to_hex(rgb_list)
-                        st.markdown(
-                            f'<h2 style="color:{st.session_state["genre_palete"][n]}; cursor:pointer;">{i[1]["name"]}</h2>', unsafe_allow_html=True)
-                        st.text('Most common colors used:')
-                        create_rainbow(pd.DataFrame({'Hex': [hex_list]}))
-                        expander = st.expander('See more')
-                        with expander:
-                            st.markdown(f'''
-                                            {i[1]['nascimento']}-{i[1]['morte']}
-                                            
-                                            Nationality: {[i for i in i[1]['nationality']]}
-                                            
-                                            Total of artworks: {i[1]['paintings']}
-                                                                        
-                                            {i[1]['bio']}  
-                                                                    
-                                            More info on: {i[1]['wikipedia']}
-                                        ''')
-                            st.divider()
-                            change_state(i[1]['name'])
-                            clickable_images(
-                                st.session_state['paths'],
-                                div_style={"display": "flex",
-                                           "flex-wrap": "wrap"},
-                                img_style={"margin": "5px", "height": "64px"},
-                                key=f'art_key_{i[1]["name"].replace(" ","_")}'
+                    with col1:
+                        source = artistas_genero[['name', 'paintings']]
+                        total_data = source.paintings.sum()
+                        color = [alt.ColorValue(color)
+                                 for color in st.session_state['genre_palete']]
+                        hist_data = [{'Red': r, 'Green': g, 'Blue': b}
+                                     for r, g, b in imagens['Rgb'].explode()]
+                        hist_source = pd.DataFrame(hist_data)
+                        if source.name.__len__() > 1:
+                            st.subheader(
+                                f'Most common colors used in: {select_genre}')
+                            create_rainbow(pd.DataFrame(
+                                {'Hex': [st.session_state['genre_palete']]}))
+                        st.subheader(
+                            f'Total works of art produced by {select_genre}')
+                        chart = (
+                            alt.Chart(source, width=560, height=420).mark_arc(innerRadius=140).encode(
+                                theta="paintings",
+
+                                color=alt.Color("name:N", scale=alt.Scale(
+                                    range=st.session_state['genre_palete'][:source.__len__()])).legend(None),
                             )
+                        )
+                        text = (
+                            alt.Chart(pd.DataFrame({'Total_Artworks': [total_data]})).mark_text(size=24, align='center', baseline='middle', color="white").encode(
+                                text='Total_Artworks:Q',
+
+                            )
+                        )
+                        donut_chart = chart+text
+                        st.altair_chart(donut_chart, use_container_width=True)
+                        hist = (
+                            alt.Chart(hist_source).transform_fold(['Red', 'Green', 'Blue'], as_=['var', 'val']).mark_bar(opacity=0.7, binSpacing=0).encode(
+                                alt.X('val:Q', bin=alt.Bin(maxbins=255),
+                                      axis=alt.Axis(title='Tones')),
+                                alt.Y('count()', stack=None),
+                                color=alt.Color('var:N', scale=alt.Scale(
+                                    range=['blue', 'green', 'red']), legend=alt.Legend(title='Channels'))
+                            )
+                        )
+                        st.altair_chart(hist, use_container_width=True)
+                with col2:
+                    if check_state_arts():
+                        create_art_info(imagens)
+                    else:
+                        for n, i in enumerate(artistas_genero.sort_values(by='name').iterrows()):
+                            points = imagens[i[1]['name'] ==
+                                             imagens['name']].Rgb.explode().to_list()
+                            rgb_list = find_clusters(points, 12)
+                            hex_list = to_hex(rgb_list)
+                            st.markdown(
+                                f'<h2 style="color:{st.session_state["genre_palete"][n]}; cursor:pointer;">{i[1]["name"]}</h2>', unsafe_allow_html=True)
+                            st.text('Most common colors used:')
+                            create_rainbow(pd.DataFrame({'Hex': [hex_list]}))
+                            expander = st.expander('See more')
+                            with expander:
+                                st.markdown(f'''
+                                                {i[1]['nascimento']}-{i[1]['morte']}
+                                                
+                                                Nationality: {[i for i in i[1]['nationality']]}
+                                                
+                                                Total of artworks: {i[1]['paintings']}
+                                                                            
+                                                {i[1]['bio']}  
+                                                                        
+                                                More info on: {i[1]['wikipedia']}
+                                            ''')
+                                st.divider()
+                                change_state(i[1]['name'])
+                                clickable_images(
+                                    st.session_state['paths'],
+                                    div_style={"display": "flex",
+                                               "flex-wrap": "wrap"},
+                                    img_style={"margin": "5px",
+                                               "height": "64px"},
+                                    key=f'art_key_{i[1]["name"].replace(" ","_")}'
+                                )
