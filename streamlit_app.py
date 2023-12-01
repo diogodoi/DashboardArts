@@ -1,9 +1,11 @@
 import streamlit as st
 import pandas as pd
 from st_clickable_images import clickable_images
-from database import data, data_imagens
-from utils import change_images, find_clusters, create_rainbow, to_hex, hex_to_rgb, compare_lists
+from database import *
+from utils import *
 import altair as alt
+from plotly.express import scatter_3d, scatter
+from sklearn.cluster import KMeans
 
 st.set_page_config(
     page_title="Diogo Godoi - Best Artworks of all times",
@@ -92,8 +94,9 @@ def find_arts_by_color(color):
     to_rgb = hex_to_rgb(color[1:])
     list_images_points = data_imagens['central_point'].values
     closes_index = compare_lists(to_rgb, list_images_points)[:20]
-    st.session_state['paths'] = data_imagens.iloc[closes_index].path.values.tolist(
+    paths = data_imagens.iloc[closes_index].path.values.tolist(
     )
+    return paths
 
 
 def create_image_full(data):
@@ -159,9 +162,115 @@ with st.sidebar:
 st.divider()
 if ((select_genre == 'Select Genre') and (st.session_state['top_art_paths'] == -1)):
     st.markdown(
-        f'''
-            <h1 style = "text-align:center;"> Select a genre or pick a color in the sidebar to begin.</h1>
+        f'''<divs tyle = "text-align:center;">
+            <h1 > Select a genre or pick a color in the sidebar to explore the colors of the genres.</h1>
+            <h2> Or you can explore some information about artirts who participated from 2 diferents genres. </h2>
             ''', unsafe_allow_html=True)
+    
+    menu_data = data[data['size_genre'] == 'B'][['name', 'genre']]
+    databases_options = ['PCA', 'TSNE', 'TSNE_auto_computed']
+
+    databases_coords_caracteristicas = {
+        'PCA': PCA_COORDS_HSV,
+        'TSNE': TSNE_COORDS_HSV,
+        'TSNE_auto_computed': TSNE_COORDS_auto_computed_HSV}
+
+    databases_coords_cores = {
+        'PCA': PCA_COORDS_COLORS,
+        'TSNE': TSNE_COORDS_COLORS,
+        'TSNE_auto_computed': TSNE_COORDS_auto_computed_COLORS
+    }
+
+    menu_col1,menu_col2,menu_col3 = st.columns(3)
+
+    with menu_col1:
+        name_selected = st.selectbox(
+            'Select Artist', options=menu_data['name'].values)
+    with menu_col2:
+        genre_of_artists = menu_data[menu_data['name']
+                                    == name_selected]['genre'].explode()
+        genre_selected = st.selectbox('Select Genre', options=genre_of_artists)
+    with menu_col3:
+        select_coords = st.selectbox(
+            'Select Coordinates', options=databases_options)
+
+
+    coordenadas_caracteristicas = get_coordenadas(
+        name_selected, genre_selected, databases_coords_caracteristicas[select_coords])
+    labels_caracteristicas = coordenadas_caracteristicas['class'].map(lambda x: 'Art from ' + genre_selected if x == 'A' else 'Art from '+ name_selected)
+    coordenadas_cores = get_coordenadas(
+        name_selected, genre_selected, databases_coords_cores[select_coords])
+    labels_cores = coordenadas_cores['class'].map(lambda x: 'Art from ' + genre_selected if x == 'A' else 'Art from '+ name_selected)
+
+
+
+    col_coords_1, col_coords_2 = st.columns(2)
+    with col_coords_1:
+        st.title('CARACTERISTICS COORDINATES')
+        fig_caracteristicas = scatter_3d(coordenadas_caracteristicas, x=coordenadas_caracteristicas['x'], y=coordenadas_caracteristicas[
+                                        'y'], z=coordenadas_caracteristicas['z'], color=labels_caracteristicas)
+        st.plotly_chart(fig_caracteristicas)
+    with col_coords_2:
+        st.title('COLORS COORDINATES')
+        fig_cores = scatter_3d(
+            coordenadas_cores, x=coordenadas_cores['x'], y=coordenadas_cores['y'], z=coordenadas_cores['z'], color=labels_cores)
+        st.plotly_chart(fig_cores)
+
+    try:
+        dists_caracteristicas = get_distances(coordenadas_caracteristicas)
+        dists_cores = get_distances(coordenadas_cores)
+    except:
+        pass
+
+    try:
+        st.title('Relationship between means of distance from coordinates')
+        dists_caracteristicas_imgs_index = dists_caracteristicas['imgs_index']
+        dists_caracteristicas = dists_caracteristicas.drop(
+            columns=['index', 'imgs_index'])
+        dists_mean_caracteristicas = dists_caracteristicas.T.mean()
+        dists_cores_imgs_index = dists_cores['imgs_index']
+        dists_cores = dists_cores.drop(columns=['index', 'imgs_index'])
+        dists_mean_cores = dists_cores.T.mean()
+        df_dists = pd.DataFrame(
+            {
+                'x': dists_mean_caracteristicas,
+                'y': dists_mean_cores
+            }
+        )
+        labels = KMeans(n_clusters=2).fit_predict(df_dists.to_numpy())
+        df_dists['imgs_index'] = dists_cores_imgs_index
+        df_dists['labels'] = labels
+        df_dists['labels'] = df_dists['labels'].map(lambda x: 'A' if x == 0 else 'B' )
+        fig_dists = scatter(df_dists, x='y', y='x',
+                            color='labels', hover_data='imgs_index',labels={'x':'Mean of distance from caracteristics','y':'Mean of distance from colors'})
+        st.plotly_chart(fig_dists, use_container_width=True)
+        col_imgs_0, col_imgs_1 = st.columns(2)
+        with col_imgs_0:
+            st.title('A')
+            index_0 = df_dists[df_dists['labels']=='A']['imgs_index'].values
+            
+            clickable_images(
+                paths=data_imagens.iloc[index_0]['path'].to_list(),
+                titles=df_dists[df_dists['labels']=='A']['imgs_index'].to_list(),            
+                div_style={"display": "flex",
+                        "flex-wrap": "wrap"},
+                img_style={"margin": "5px", "height": "128px"},
+            )
+        with col_imgs_1:
+            st.title('B')
+            index_1 = df_dists[df_dists['labels']=='B']['imgs_index'].values
+            clickable_images(
+                paths=data_imagens.iloc[index_1]['path'].to_list(),
+                titles= df_dists[df_dists['labels']=='B']['imgs_index'].to_list(),
+                div_style={"display": "flex",
+                        "flex-wrap": "wrap"},
+                img_style={"margin": "5px", "height": "128px"},
+            )
+
+
+    except:
+        st.title('There is no artists to compare !')
+
 else:
     with st.container():
         col1, col2 = st.columns(2)
