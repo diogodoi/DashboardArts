@@ -155,7 +155,7 @@ with st.sidebar:
     color_button = st.button(
         'Find now!', key='color_button', use_container_width=True)
     if color_button:
-        find_arts_by_color(color_selected)
+        st.session_state['paths'] = find_arts_by_color(color_selected)
         st.session_state['top_art_paths'] = -2
 
 
