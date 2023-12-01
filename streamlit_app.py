@@ -255,6 +255,7 @@ if ((select_genre == 'Select Genre') and (st.session_state['top_art_paths'] == -
                 div_style={"display": "flex",
                         "flex-wrap": "wrap"},
                 img_style={"margin": "5px", "height": "128px"},
+                key = 'A'
             )
         with col_imgs_1:
             st.title('B')
@@ -265,6 +266,7 @@ if ((select_genre == 'Select Genre') and (st.session_state['top_art_paths'] == -
                 div_style={"display": "flex",
                         "flex-wrap": "wrap"},
                 img_style={"margin": "5px", "height": "128px"},
+                key = 'B'
             )
 
 
